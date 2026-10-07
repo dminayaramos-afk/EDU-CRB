@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cerebro: cómo piensa una red neuronal</title>
+<meta name="description" content="Un transformer escrito desde cero con NumPy, explicado con una red neuronal en movimiento.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#03051a;--ink:#e8ecff;--mut:#8e99c9;--line:#1c2552;--blue:#3fe0ff;--pink:#ff4d8d;--card:#070b26}
+*{box-sizing:border-box}
+html{scroll-padding-top:12px}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.55 "Bricolage Grotesque",system-ui,sans-serif}
+main{max-width:1080px;margin:0 auto;padding:40px 20px 56px}
+h1{font-size:clamp(44px,9vw,92px);line-height:.95;margin:0 0 14px;font-weight:800;letter-spacing:-.03em}
+.sub{max-width:56ch;color:var(--mut);margin:0 0 26px;font-size:clamp(17px,2.4vw,21px)}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.bar button{font:600 15px inherit;font-family:inherit;border:1.5px solid var(--ink);background:transparent;color:var(--ink);padding:9px 16px;border-radius:999px;cursor:pointer}
+.bar button[aria-pressed=true]{background:var(--ink);color:#03051a}
+.bar button:focus-visible,.chips button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.hint{color:var(--mut);font-size:15px;margin-left:4px}
+.wrap{position:relative;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+canvas{display:block;width:100%;touch-action:pan-y;cursor:pointer}
+#tip{position:absolute;pointer-events:none;max-width:270px;background:#e8ecff;color:#03051a;padding:10px 13px;border-radius:10px;font-size:14.5px;line-height:1.4;opacity:0;transition:opacity .12s;z-index:2}
+#tip b{display:block;margin-bottom:2px;font-size:15.5px}
+#tip.on{opacity:1}
+#info{margin:16px 0 8px;min-height:3.2em;max-width:70ch}
+#info b{font-size:19px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 34px;padding:0;list-style:none}
+.chips button{font:600 14px inherit;font-family:inherit;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:6px 13px;border-radius:999px;cursor:pointer}
+.chips button[aria-pressed=true]{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
+.facts{max-width:62ch;color:var(--mut)}
+.facts strong{color:var(--ink)}
+.flow{position:relative;height:clamp(200px,34vw,320px);margin:6px -20px 10px}
+.flow canvas{width:100%;height:100%;cursor:default;touch-action:auto}
+.cap{color:var(--mut);margin:0 0 26px;font-size:15px}
+[hidden]{display:none!important}
+.chat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+#log{display:flex;flex-direction:column;gap:8px;max-height:230px;overflow:auto;margin-bottom:12px}
+#log:empty{display:none}
+.msg{max-width:88%;padding:8px 12px;border-radius:14px;font-size:16px;overflow-wrap:anywhere}
+.msg.u{align-self:flex-end;background:#12307a}
+.msg.c{align-self:flex-start;background:#0c1a3d;border:1px solid var(--line)}
+#f{display:flex;gap:8px;flex-wrap:wrap}
+#q{flex:1;min-width:200px;font:inherit;font-size:17px;color:var(--ink);background:#0a1030;border:1.5px solid var(--line);border-radius:999px;padding:10px 18px}
+#q:focus-visible,.chat button:focus-visible,.chat select:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.go{font:600 15px inherit;font-family:inherit;border:0;background:var(--blue);color:#03051a;padding:10px 20px;border-radius:999px;cursor:pointer}
+.go:disabled{opacity:.45;cursor:default}
+.go.alt{background:transparent;color:var(--ink);border:1.5px solid var(--pink)}
+.ex{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.ex button{font:inherit;font-size:14px;border:1px solid var(--line);background:transparent;color:var(--mut);padding:4px 11px;border-radius:999px;cursor:pointer}
+.ex button:hover{color:var(--ink);border-color:var(--blue)}
+.chat details{margin-top:12px}
+.chat summary{cursor:pointer;color:var(--mut);font-size:15px}
+.ps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px 18px;margin-top:10px;font-size:14.5px}
+.ps label{display:grid;gap:2px}
+.ps input[type=range]{width:100%;accent-color:#3fe0ff}
+.ps select{font:inherit;color:var(--ink);background:#0a1030;border:1px solid var(--line);border-radius:8px;padding:4px}
+.note{color:var(--mut);font-size:14px;margin:10px 0 0}
+.live{margin:14px 0 6px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}
+.live h3{font-size:15px;margin:16px 0 6px;color:var(--mut);font-weight:600}
+.live h3:first-child{margin-top:0}
+.live h3 small{font-weight:400}
+.live select{font:inherit;font-size:14px;color:var(--ink);background:#0a1030;border:1px solid var(--line);border-radius:8px;padding:2px 4px}
+#toks{line-height:2}
+.tk{display:inline-block;padding:0 6px;margin:1px;border-radius:6px;border:1px solid var(--line);font:13px ui-monospace,Menlo,monospace;background:rgba(181,140,255,calc(var(--a,0)*.8));white-space:pre}
+.pr{display:grid;grid-template-columns:96px 1fr 54px;gap:8px;align-items:center;font:13px ui-monospace,Menlo,monospace;margin:3px 0}
+.pn{overflow:hidden;text-overflow:ellipsis;white-space:pre}
+.pb{position:relative;height:12px;background:#0a1030;border-radius:6px;overflow:hidden}
+.pb i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;transition:width .25s}
+.b0{background:#2a3566}.b1{background:#3fe0ff}
+.pick .b1{background:#ff4d8d}.pick .pn,.pick .pp{color:#ff4d8d;font-weight:700}
+#out{font-size:19px;min-height:1.6em;margin:0;overflow-wrap:anywhere}
+h1{text-shadow:0 0 40px rgba(63,224,255,.25)}
+pre{background:#0a1030;border:1px solid var(--line);color:#e8ecff;padding:16px 18px;border-radius:12px;overflow-x:auto;font-size:15px;max-width:520px}
+footer{margin-top:30px;color:var(--mut);font-size:15px}
+a{color:var(--blue)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Cerebro</h1>
+  <p class="sub">Un modelo de lenguaje escrito desde cero con NumPy, sin PyTorch ni TensorFlow. Esto es lo que ocurre dentro cada vez que escribe una palabra.</p>
+
+  <div class="flow" aria-hidden="true"><canvas id="fx"></canvas></div>
+  <p class="cap">Muchas posibilidades entran por la izquierda y un solo token sale por la derecha. Pregúntale algo y míralo pasar por dentro.</p>
+
+  <section class="chat" aria-label="Chat con Cerebro">
+    <div id="log" aria-live="polite"></div>
+    <form id="f" autocomplete="off">
+      <input id="q" maxlength="200" placeholder="Pregúntale algo a Cerebro…" aria-label="Tu pregunta">
+      <button class="go" id="send" type="submit" disabled>Preguntar</button>
+      <button class="go alt" id="stop" type="button" hidden>Detener</button>
+    </form>
+    <div class="ex" id="ex"></div>
+    <details open>
+      <summary>Parámetros de generación</summary>
+      <div class="ps">
+        <label>Temperatura <output id="vpT"></output><input id="pT" type="range" min="0" max="1.5" step="0.05" value="0.7"></label>
+        <label>Top-k <output id="vpK"></output><input id="pK" type="range" min="1" max="100" step="1" value="40"></label>
+        <label>Top-p <output id="vpP"></output><input id="pP" type="range" min="0.1" max="1" step="0.01" value="0.92"></label>
+        <label>Penalización de repetición <output id="vpR"></output><input id="pR" type="range" min="1" max="1.5" step="0.01" value="1.15"></label>
+        <label>Velocidad de la animación <select id="pV"><option value="200">Lenta</option><option value="70" selected>Normal</option><option value="0">Rápida</option></select></label>
+      </div>
+      <p class="note">Cambia un parámetro y vuelve a preguntar: verás cómo cambian las barras de probabilidad y la respuesta.</p>
+    </details>
+    <p class="note" id="st">Cargando el modelo…</p>
+  </section>
+
+  <div class="bar">
+    <button id="mThink" aria-pressed="true">Pensar</button>
+    <button id="mLearn" aria-pressed="false">Aprender</button>
+    <span class="hint" id="hint">La señal viaja de izquierda a derecha.</span>
+  </div>
+
+  <div class="wrap" id="wrap">
+    <canvas id="cv" role="img" aria-label="Red neuronal animada con las piezas del modelo Cerebro. Usa los botones de abajo para leer cada pieza."></canvas>
+    <div id="tip" role="tooltip"></div>
+  </div>
+
+  <section class="live" id="live" hidden aria-label="Dentro del modelo">
+    <h3>Tokens que ve el modelo. El violeta marca a cuáles presta atención:
+      <select id="sL" aria-label="Capa"><option value="0">capa 1</option><option value="1">capa 2</option><option value="2" selected>capa 3</option></select>
+      <select id="sH" aria-label="Cabeza"><option value="0" selected>cabeza 1</option><option value="1">cabeza 2</option><option value="2">cabeza 3</option><option value="3">cabeza 4</option></select></h3>
+    <div id="toks"></div>
+    <h3>Candidatos para el siguiente token <small>(gris: antes de filtrar · azul: tras top-k y top-p · rosa: el elegido)</small></h3>
+    <div id="probs"></div>
+    <h3>Respuesta</h3>
+    <p id="out"></p>
+  </section>
+
+  <div id="info" aria-live="polite"><b>Pasa el ratón o toca una pieza.</b><br>Cada columna es una parte real del modelo.</div>
+  <ul class="chips" id="chips"></ul>
+
+  <p class="facts"><strong>Esto no es una simulación:</strong> el chat ejecuta en tu navegador los pesos reales de <code>best.npz</code>, con el mismo tokenizador y el mismo muestreo que el código Python. <strong>Perfil pequeño:</strong> unos 190 mil parámetros, 3 capas, 4 cabezas de atención, vectores de 64 números y un contexto de 112 tokens. Aprende de un corpus propio y funciona sin internet. No es un LLM competitivo: es un modelo que puedes leer entero.</p>
+
+  <pre>git clone https://github.com/dminayaramos-afk/Educa-Cerebro.git
+cd Educa-Cerebro/cerebro-main
+python3 main.py</pre>
+
+  <footer><a href="https://github.com/dminayaramos-afk/Educa-Cerebro">Ver el código en GitHub</a></footer>
+</main>
+
+<script>
+const S=[
+ {k:'Texto',n:3,c:'#8e99c9',t:'Texto de entrada',d:'Lo que escribes. Para el modelo todavía son solo letras: aún no entiende nada.'},
+ {k:'Tokens',n:5,c:'#3fe0ff',t:'Tokenizador BPE',d:'Parte el texto en trozos llamados tokens y da un número a cada uno. Trabaja con bytes, así que nunca se topa con una palabra desconocida.'},
+ {k:'Embedding',n:6,c:'#4fb3ff',t:'Embeddings',d:'Convierte cada token en una lista de 64 números que representa su significado, y le suma su posición dentro de la frase.'},
+ {k:'Atención',n:6,c:'#b58cff',t:'Atención multi-cabeza',d:'4 cabezas miran a la vez qué palabras anteriores importan para entender la actual. Es causal: no puede mirar el futuro. Se repite en 3 capas.'},
+ {k:'Residual',n:5,c:'#ffc65a',t:'Normalización y residual',d:'LayerNorm mantiene los números en un rango estable y la conexión residual suma la entrada a la salida, para que no se pierda información.'},
+ {k:'MLP',n:7,c:'#4be3b0',t:'Red feed-forward (GELU)',d:'Cada token pasa por una mini red de 256 neuronas ocultas. Aquí se guarda buena parte de lo que el modelo ha aprendido.'},
+ {k:'Logits',n:8,c:'#4fb3ff',t:'Logits',d:'Puntúa cada token del vocabulario como posible siguiente palabra. Reutiliza la matriz de embeddings (pesos compartidos).'},
+ {k:'Muestreo',n:4,c:'#3fe0ff',t:'Softmax y muestreo',d:'Convierte las puntuaciones en probabilidades y elige una con temperatura, top-k, top-p y penalización de repeticiones.'},
+ {k:'Respuesta',n:3,c:'#ffffff',t:'Siguiente token',d:'El token elegido se añade al texto y todo vuelve a empezar, un token cada vez, hasta completar la respuesta.'}
+];
+const LEARN='Aprender: la pérdida mide el error y la retropropagación lo envía hacia atrás. AdamW ajusta cada peso un poquito.';
+const $=id=>document.getElementById(id);
+const cv=$('cv'),cx=cv.getContext('2d'),tip=$('tip'),wrap=$('wrap'),info=$('info');
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MAXN=Math.max(...S.map(o=>o.n));
+let W,H,horiz,edges=[],from=[],to=[],pulses=[],act=[],learn=false,hover=-1,focus=-1,last=0,acc=0,T=0;
+
+function P(s,j){
+  const n=S[s].n,L=horiz?W:H,C=horiz?H:W,pad=horiz?58:46;
+  const m=pad+s*(L-2*pad)/(S.length-1);
+  const gap=Math.min(horiz?38:44,(C-80)/MAXN);
+  const c=C/2+(j-(n-1)/2)*gap;
+  return horiz?[m,c]:[c,m+(horiz?0:0)];
+}
+function build(){
+  const dpr=window.devicePixelRatio||1;
+  W=wrap.clientWidth;horiz=W>=720;
+  H=horiz?Math.max(360,Math.min(470,Math.round(W*.42))):680;
+  cv.width=W*dpr;cv.height=H*dpr;cv.style.height=H+'px';
+  cx.setTransform(dpr,0,0,dpr,0,0);
+  edges=[];from=S.map(o=>Array.from({length:o.n},()=>[]));to=S.map(o=>Array.from({length:o.n},()=>[]));
+  for(let s=0;s<S.length-1;s++){
+    const n1=S[s].n,n2=S[s+1].n;
+    for(let a=0;a<n1;a++){
+      const ctr=n1>1?a*(n2-1)/(n1-1):0;
+      for(let b=0;b<n2;b++) if(Math.abs(b-ctr)<=1.01){
+        const e={s,a,b,i:edges.length};edges.push(e);from[s][a].push(e);to[s+1][b].push(e);
+      }
+    }
+  }
+  act=S.map(o=>Array(o.n).fill(0));pulses=[];
+}
+function seed(){
+  const s=learn?S.length-2:0,list=edges.filter(e=>e.s===s);
+  const e=list[Math.random()*list.length|0];
+  pulses.push({e,t:learn?1:0,sp:.5+Math.random()*.6});
+}
+function step(dt){
+  acc+=dt;
+  while(acc>.11){acc-=.11;if(!RM&&!busy&&pulses.length<120)seed();}
+  const out=[];
+  for(const p of pulses){
+    p.t+=(learn?-1:1)*p.sp*dt;
+    if(!learn&&p.t>=1){
+      act[p.e.s+1][p.e.b]=1;
+      const nx=from[p.e.s+1]&&from[p.e.s+1][p.e.b];
+      if(p.chain!==false&&nx&&nx.length&&Math.random()<.9)out.push({e:nx[Math.random()*nx.length|0],t:0,sp:.5+Math.random()*.6});
+    }else if(learn&&p.t<=0){
+      act[p.e.s][p.e.a]=1;
+      const pv=to[p.e.s][p.e.a];
+      if(pv&&pv.length&&Math.random()<.9)out.push({e:pv[Math.random()*pv.length|0],t:1,sp:.5+Math.random()*.6});
+    }else out.push(p);
+  }
+  pulses=out;
+  for(const r of act)for(let i=0;i<r.length;i++)r[i]=Math.max(0,r[i]-dt*1.6);
+}
+function lerp(a,b,t){return a+(b-a)*t}
+function draw(){
+  cx.clearRect(0,0,W,H);
+  const sel=hover>=0?hover:focus,stp=(horiz?W-116:H-92)/(S.length-1);
+  if(sel>=0){
+    const m=P(sel,0)[horiz?0:1];
+    cx.fillStyle=S[sel].c+'26';
+    if(horiz)cx.fillRect(m-stp/2,0,stp,H);else cx.fillRect(0,m-stp/2,W,stp);
+  }
+  // bracket: x3 capas
+  const a=P(3,0),b=P(5,0),pd=horiz?30:26;
+  cx.setLineDash([5,5]);cx.strokeStyle='#4a5690';cx.lineWidth=1.2;
+  cx.beginPath();
+  if(horiz)cx.roundRect(a[0]-pd,10,b[0]-a[0]+pd*2,H-52,14);
+  else cx.roundRect(8,a[1]-pd,W-16,b[1]-a[1]+pd*2,14);
+  cx.stroke();cx.setLineDash([]);
+  cx.fillStyle='#8e99c9';cx.font='600 12px "Bricolage Grotesque",sans-serif';cx.textAlign='left';cx.textBaseline='alphabetic';
+  cx.fillText('× 3 capas',horiz?a[0]-pd+10:16,horiz?28:a[1]-pd+16);
+  // conexiones
+  cx.lineWidth=1;cx.strokeStyle='rgba(142,153,201,.22)';cx.beginPath();
+  for(const e of edges){const p=P(e.s,e.a),q=P(e.s+1,e.b);cx.moveTo(p[0],p[1]);cx.lineTo(q[0],q[1]);}
+  cx.stroke();
+  // arcos de atención (cada token mira a los anteriores)
+  cx.strokeStyle=S[3].c;cx.lineWidth=1.4;
+  for(let i=1;i<S[3].n;i++)for(let j=0;j<i;j++){
+    cx.globalAlpha=.06+.3*(.5+.5*Math.sin(T*.0017+i*1.7+j*2.3));
+    const p=P(3,i),q=P(3,j),mx=(p[0]+q[0])/2,my=(p[1]+q[1])/2,k=horiz?-(i-j)*9:(i-j)*9;
+    cx.beginPath();cx.moveTo(p[0],p[1]);
+    if(horiz)cx.quadraticCurveTo(mx+k,my,q[0],q[1]);else cx.quadraticCurveTo(mx,my+k,q[0],q[1]);
+    cx.stroke();
+  }
+  cx.globalAlpha=1;
+  // pulsos
+  cx.fillStyle=learn?'#ff4d8d':'#3fe0ff';
+  for(const p of pulses){
+    const q1=P(p.e.s,p.e.a),q2=P(p.e.s+1,p.e.b);
+    cx.globalAlpha=.9;cx.beginPath();cx.arc(lerp(q1[0],q2[0],p.t),lerp(q1[1],q2[1],p.t),3.2,0,7);cx.fill();
+  }
+  cx.globalAlpha=1;
+  // neuronas
+  for(let s=0;s<S.length;s++)for(let j=0;j<S[s].n;j++){
+    const [x,y]=P(s,j),v=act[s][j];
+    cx.beginPath();cx.arc(x,y,8,0,7);cx.fillStyle='#070b26';cx.fill();
+    cx.lineWidth=2;cx.strokeStyle=S[s].c;cx.stroke();
+    if(v>0){
+      cx.globalAlpha=Math.min(1,v);cx.fillStyle=learn?'#ff4d8d':S[s].c;
+      cx.beginPath();cx.arc(x,y,8+v*3,0,7);cx.fill();cx.globalAlpha=1;
+    }
+  }
+  // etiquetas
+  cx.fillStyle='#e8ecff';cx.font='600 12px "Bricolage Grotesque",sans-serif';
+  for(let s=0;s<S.length;s++){
+    const m=P(s,0);
+    if(horiz){cx.textAlign='center';cx.fillText(S[s].k,m[0],H-16);}
+    else{cx.textAlign='left';cx.fillText(S[s].k,12,m[1]+4);}
+  }
+}
+const fx=$('fx'),fc=fx.getContext('2d');let FW,FH,EX,EY,str=[];
+function fbuild(){
+  const d=window.devicePixelRatio||1;FW=fx.parentElement.clientWidth;FH=fx.parentElement.clientHeight;
+  fx.width=FW*d;fx.height=FH*d;fc.setTransform(d,0,0,d,0,0);
+  EX=FW*(FW>720?.64:.55);EY=FH/2;
+  str=Array.from({length:FW>720?30:18},()=>({x:FW*(.03+Math.random()*.2),y:FH*(.08+Math.random()*.84),a:Math.random()*6.3,w:.6+Math.random()*1.4,al:.25+Math.random()*.5,sp:8+Math.random()*14}));
+}
+function fdraw(t){
+  fc.clearRect(0,0,FW,FH);
+  for(const s of str){
+    const w=Math.sin(t*.0004*s.w+s.a)*FH*.14;
+    fc.beginPath();fc.moveTo(s.x,s.y);
+    fc.bezierCurveTo(s.x+(EX-s.x)*.45,s.y+w,EX-(EX-s.x)*.3,EY+(s.y-EY)*.5-w,EX,EY);
+    fc.setLineDash([2,6]);fc.lineDashOffset=-t*.001*s.sp;
+    fc.strokeStyle='rgba(120,225,255,'+s.al+')';fc.lineWidth=1;fc.stroke();
+    fc.setLineDash([]);fc.fillStyle='#7ae6ff';fc.globalAlpha=Math.min(1,s.al+.3);
+    fc.beginPath();fc.arc(s.x,s.y,2,0,7);fc.fill();fc.globalAlpha=1;
+  }
+  const g=fc.createLinearGradient(EX,0,FW,0);
+  g.addColorStop(0,'rgba(190,248,255,.95)');g.addColorStop(1,'rgba(63,224,255,0)');
+  fc.strokeStyle=g;fc.lineWidth=2;fc.shadowColor='#3fe0ff';fc.shadowBlur=14;
+  fc.beginPath();fc.moveTo(EX,EY);fc.lineTo(FW,EY);fc.stroke();fc.shadowBlur=0;
+  const r=fc.createRadialGradient(EX,EY,0,EX,EY,90);
+  r.addColorStop(0,'rgba(120,235,255,.35)');r.addColorStop(1,'rgba(120,235,255,0)');
+  fc.fillStyle=r;fc.fillRect(EX-90,EY-90,180,180);
+}
+function frame(ts){
+  const dt=Math.min(50,ts-last)/1000;last=ts;
+  if(!RM)T=ts;
+  step(dt);draw();fdraw(RM?0:ts);requestAnimationFrame(frame);
+}
+function stageAt(x,y){
+  const m=horiz?x:y,L=horiz?W:H,pad=horiz?58:46,stp=(L-2*pad)/(S.length-1);
+  const i=Math.round((m-pad)/stp);
+  return i>=0&&i<S.length&&Math.abs(m-(pad+i*stp))<stp/2?i:-1;
+}
+function show(i){
+  const o=S[i];
+  info.innerHTML='<b>'+o.t+'</b><br>'+o.d;
+  tip.innerHTML='<b>'+o.t+'</b>'+o.d;
+}
+function place(x,y){
+  const w=tip.offsetWidth,h=tip.offsetHeight;
+  tip.style.left=Math.max(6,Math.min(W-w-6,x+14))+'px';
+  tip.style.top=Math.max(6,Math.min(H-h-6,y+16))+'px';
+}
+function pointer(e,tap){
+  const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,i=stageAt(x,y);
+  if(i<0){hover=-1;tip.classList.remove('on');return;}
+  hover=i;focus=-1;mark(i);show(i);tip.classList.add('on');place(x,y);
+}
+cv.addEventListener('pointermove',e=>{if(e.pointerType==='mouse')pointer(e)});
+cv.addEventListener('pointerdown',e=>pointer(e));
+cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'){hover=-1;tip.classList.remove('on')}});
+document.addEventListener('pointerdown',e=>{if(!wrap.contains(e.target)){hover=-1;tip.classList.remove('on')}});
+
+// botones por pieza (teclado y móvil)
+const chips=$('chips');
+S.forEach((o,i)=>{
+  const li=document.createElement('li'),b=document.createElement('button');
+  b.textContent=o.k;b.style.setProperty('--c',o.c);b.setAttribute('aria-pressed','false');
+  b.onclick=()=>{hover=-1;tip.classList.remove('on');focus=i;mark(i);show(i)};
+  li.appendChild(b);chips.appendChild(li);
+});
+function mark(i){[...chips.querySelectorAll('button')].forEach((b,j)=>b.setAttribute('aria-pressed',j===i))}
+
+function setMode(l){
+  learn=l;pulses=[];
+  $('mThink').setAttribute('aria-pressed',!l);$('mLearn').setAttribute('aria-pressed',l);
+  $('hint').textContent=l?LEARN:'La señal viaja de izquierda a derecha.';
+}
+$('mThink').onclick=()=>setMode(false);
+$('mLearn').onclick=()=>setMode(true);
+
+
+// ================= MOTOR REAL DE CEREBRO (mismos pesos que best.npz) =================
+const M={ready:false};
+async function cargarModelo(){
+  const [meta,buf]=await Promise.all([fetch('modelo/cerebro-web.json').then(r=>r.json()),fetch('modelo/cerebro-web.bin').then(r=>r.arrayBuffer())]);
+  const all=new Float32Array(buf);M.w={};
+  for(const t of meta.tensores)M.w[t.nombre]=all.subarray(t.desde,t.desde+t.n);
+  M.c=meta.config;M.meta=meta;
+  M.vocab=[];for(let i=0;i<4;i++)M.vocab.push(new Uint8Array(0));
+  for(let b=0;b<256;b++)M.vocab.push(new Uint8Array([b]));
+  M.rank=new Map();
+  meta.fusiones.forEach(([a,b],i)=>{
+    const u=new Uint8Array(M.vocab[a].length+M.vocab[b].length);u.set(M.vocab[a]);u.set(M.vocab[b],M.vocab[a].length);
+    M.vocab.push(u);M.rank.set(a*4096+b,i);
+  });
+  M.cache=new Map();M.ready=true;
+}
+const PAT=/ ?\p{L}+| ?\p{Nd}+| ?[^\s\p{L}\p{N}_]+|\s+/gu;
+function encPieza(p){
+  let r=M.cache.get(p);if(r)return r;
+  let ids=Array.from(new TextEncoder().encode(p),b=>4+b);
+  while(ids.length>=2){
+    let best=-1,bi=-1;
+    for(let i=0;i<ids.length-1;i++){const k=M.rank.get(ids[i]*4096+ids[i+1]);if(k!==undefined&&(best<0||k<best)){best=k;bi=i}}
+    if(best<0)break;
+    const a=ids[bi],b=ids[bi+1],nu=260+best,o=[];
+    for(let i=0;i<ids.length;i++){if(i<ids.length-1&&ids[i]===a&&ids[i+1]===b){o.push(nu);i++}else o.push(ids[i])}
+    ids=o;
+  }
+  M.cache.set(p,ids);return ids;
+}
+function enc(t){const o=[];for(const p of t.match(PAT)||[])o.push(...encPieza(p));return o}
+function dec(ids){
+  let n=0;for(const i of ids)n+=M.vocab[i]?M.vocab[i].length:0;
+  const u=new Uint8Array(n);let k=0;for(const i of ids){const v=M.vocab[i];if(v){u.set(v,k);k+=v.length}}
+  return new TextDecoder().decode(u);
+}
+function ln(x,T,D,g,b){
+  const y=new Float32Array(T*D);
+  for(let t=0;t<T;t++){
+    let m=0;for(let k=0;k<D;k++)m+=x[t*D+k];m/=D;
+    let v=0;for(let k=0;k<D;k++){const d=x[t*D+k]-m;v+=d*d}v/=D;
+    const r=1/Math.sqrt(v+1e-5);
+    for(let k=0;k<D;k++)y[t*D+k]=(x[t*D+k]-m)*r*g[k]+b[k];
+  }
+  return y;
+}
+function lin(x,T,Di,w,Do,b){
+  const y=new Float32Array(T*Do);
+  for(let t=0;t<T;t++){
+    const o=t*Do;for(let j=0;j<Do;j++)y[o+j]=b[j];
+    for(let k=0;k<Di;k++){const xv=x[t*Di+k],r=k*Do;for(let j=0;j<Do;j++)y[o+j]+=xv*w[r+j]}
+  }
+  return y;
+}
+function forward(ids){
+  const c=M.c,D=c.dim,H=c.n_heads,dh=D/H,F=c.dim_ffn,T=ids.length,w=M.w,sc=1/Math.sqrt(dh);
+  let x=new Float32Array(T*D);
+  for(let t=0;t<T;t++)for(let k=0;k<D;k++)x[t*D+k]=w.tok_emb[ids[t]*D+k]+w.pos_emb[t*D+k];
+  const att=[];
+  for(let l=0;l<c.n_layers;l++){
+    const p=n=>w['l'+l+'.'+n];
+    const h1=ln(x,T,D,p('ln1_g'),p('ln1_b')),qkv=lin(h1,T,D,p('wqkv'),3*D,p('bqkv'));
+    const ctx=new Float32Array(T*D),aL=[],W3=3*D;
+    for(let h=0;h<H;h++){
+      let last=null;
+      for(let t=0;t<T;t++){
+        const s=new Float32Array(t+1);let mx=-1e30;
+        for(let j=0;j<=t;j++){let d=0;for(let k=0;k<dh;k++)d+=qkv[t*W3+h*dh+k]*qkv[j*W3+D+h*dh+k];d*=sc;s[j]=d;if(d>mx)mx=d}
+        let sum=0;for(let j=0;j<=t;j++){s[j]=Math.exp(s[j]-mx);sum+=s[j]}
+        for(let j=0;j<=t;j++){s[j]/=sum;const a=s[j];for(let k=0;k<dh;k++)ctx[t*D+h*dh+k]+=a*qkv[j*W3+2*D+h*dh+k]}
+        if(t===T-1)last=s;
+      }
+      aL.push(last);
+    }
+    att.push(aL);
+    const a=lin(ctx,T,D,p('wo'),D,p('bo'));for(let i=0;i<x.length;i++)x[i]+=a[i];
+    const h2=ln(x,T,D,p('ln2_g'),p('ln2_b')),f=lin(h2,T,D,p('w1'),F,p('b1'));
+    for(let i=0;i<f.length;i++){const v=f[i];f[i]=.5*v*(1+Math.tanh(.7978845608028654*(v+.044715*v*v*v)))}
+    const m=lin(f,T,F,p('w2'),D,p('b2'));for(let i=0;i<x.length;i++)x[i]+=m[i];
+  }
+  const xl=ln(x.subarray((T-1)*D),1,D,w.lnf_g,w.lnf_b),V=c.vocab_size,lg=new Float32Array(V);
+  for(let v=0;v<V;v++){let d=w.b_out[v];for(let k=0;k<D;k++)d+=xl[k]*w.tok_emb[v*D+k];lg[v]=d}
+  return {logits:lg,att};
+}
+function softmaxF(l){
+  let m=-Infinity;for(const v of l)if(v>m)m=v;
+  const o=new Float64Array(l.length);let s=0;
+  for(let i=0;i<l.length;i++){const e=Math.exp(l[i]-m);o[i]=e;s+=e}
+  for(let i=0;i<o.length;i++)o[i]/=s;return o;
+}
+function muestrear(logits,prev,P,rnd){
+  const V=logits.length,l=Float64Array.from(logits);
+  l[0]=l[1]=l[2]=-Infinity;
+  if(P.pen&&P.pen!==1){for(const i of new Set(prev)){if(isFinite(l[i]))l[i]=l[i]>0?l[i]/P.pen:l[i]*P.pen}}
+  if(P.temp<=1e-6){let b=0;for(let i=1;i<V;i++)if(l[i]>l[b])b=i;const o=new Float64Array(V);o[b]=1;return {id:b,base:o,fin:o}}
+  for(let i=0;i<V;i++)l[i]/=P.temp;
+  const base=softmaxF(l);
+  if(P.k>0&&P.k<V){const s=Float64Array.from(l).sort(),u=s[V-P.k];for(let i=0;i<V;i++)if(l[i]<u)l[i]=-Infinity}
+  let pr=softmaxF(l);
+  if(P.p>0&&P.p<1){
+    const ord=Array.from({length:V},(_,i)=>i).sort((a,b)=>pr[b]-pr[a]);
+    let ac=0,cut=V;for(let i=0;i<V;i++){ac+=pr[ord[i]];if(ac>=P.p){cut=i+1;break}}
+    const f=new Float64Array(V);let s=0;for(let i=0;i<cut;i++){f[ord[i]]=pr[ord[i]];s+=pr[ord[i]]}
+    for(let i=0;i<V;i++)f[i]/=s;pr=f;
+  }
+  let r=rnd(),a=0,id=V-1;for(let i=0;i<V;i++){a+=pr[i];if(r<a){id=i;break}}
+  return {id,base,fin:pr};
+}
+
+// ================= CHAT =================
+let busy=false,abort=false,hist=[],lastRun=null;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const vis=t=>t.replace(/ /g,'·').replace(/\n/g,'↵');
+const tstr=i=>i<4?['<pad>','<unk>','<ini>','<fin>'][i]:vis(dec([i]));
+function el(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+const PAR=()=>({temp:+$('pT').value,k:+$('pK').value,p:+$('pP').value,pen:+$('pR').value});
+['pT','pK','pP','pR'].forEach(id=>{const i=$(id),o=$('v'+id);const u=()=>o.textContent=(+i.value).toFixed(id==='pK'?0:2);i.addEventListener('input',u);u()});
+function addLog(r,t){
+  const log=$('log');log.append(el('div','msg '+r,t));
+  while(log.children.length>8)log.firstChild.remove();
+  log.scrollTop=log.scrollHeight;
+}
+function armarPrompt(msg,mx){
+  const B=M.c.block_size;let tu=hist.slice(-6);
+  for(;;){
+    const txt=tu.map(t=>(t.r==='u'?'usuario':'cerebro')+': '+t.t+'\n').join('')+'usuario: '+msg+'\ncerebro:';
+    const ids=[3].concat(enc(txt));
+    if(ids.length<=B-mx||!tu.length)return ids.slice(-(B-mx));
+    tu=tu.length>=2?tu.slice(2):[];
+  }
+}
+function renderToks(){
+  if(!lastRun)return;
+  const {ctxw,att}=lastRun,l=+$('sL').value,h=+$('sH').value,a=att[l][h];
+  let mx=0;for(const v of a)if(v>mx)mx=v;mx=mx||1;
+  const box=$('toks'),off=Math.max(0,ctxw.length-64);
+  box.textContent=off?'… ':'';
+  for(let i=off;i<ctxw.length;i++){
+    const s=el('span','tk',tstr(ctxw[i]));
+    s.style.setProperty('--a',(a[i]/mx).toFixed(2));
+    s.title='id '+ctxw[i]+' · atención '+(a[i]*100).toFixed(0)+'%';
+    box.append(s);
+  }
+}
+function renderProbs(st){
+  const box=$('probs');box.textContent='';
+  const idx=Array.from({length:M.c.vocab_size},(_,i)=>i).sort((a,b)=>st.base[b]-st.base[a]).slice(0,8);
+  if(!idx.includes(st.id))idx[7]=st.id;
+  for(const i of idx){
+    const row=el('div','pr'+(i===st.id?' pick':'')),bar=el('span','pb'),b0=el('i','b0'),b1=el('i','b1');
+    b0.style.width=(st.base[i]*100)+'%';b1.style.width=(st.fin[i]*100)+'%';bar.append(b0,b1);
+    row.append(el('span','pn',tstr(i)),bar,el('span','pp',(st.fin[i]*100).toFixed(1)+'%'));
+    box.append(row);
+  }
+}
+function setInfo(o,extra){
+  info.textContent='';
+  info.append(el('b',null,o.t),document.createElement('br'),o.d);
+  if(extra){info.append(document.createElement('br'),el('i',null,extra))}
+}
+function dyn(s,r,st,ctxw,P,nuevos){
+  if(s===1)return 'Ahora mismo: '+ctxw.length+' tokens en el contexto.';
+  if(s===2)return ctxw.length+' tokens × '+M.c.dim+' números cada uno.';
+  if(s===3){const l=+$('sL').value,h=+$('sH').value,a=r.att[l][h];let b=0;for(let i=1;i<a.length;i++)if(a[i]>a[b])b=i;
+    return 'Capa '+(l+1)+', cabeza '+(h+1)+': mira sobre todo a «'+tstr(ctxw[b])+'» ('+(a[b]*100).toFixed(0)+'%).'}
+  if(s===6){let b=4;for(let i=4;i<r.logits.length;i++)if(r.logits[i]>r.logits[b])b=i;return M.c.vocab_size+' puntuaciones; la más alta es para «'+tstr(b)+'».'}
+  if(s===7)return 'Elige «'+tstr(st.id)+'» con '+(st.fin[st.id]*100).toFixed(1)+'% (temperatura '+P.temp.toFixed(2)+', top-k '+P.k+', top-p '+P.p.toFixed(2)+').';
+  if(s===8)return nuevos.length?'Respuesta hasta ahora: '+dec(nuevos).split('\n')[0]:'';
+  return '';
+}
+function burst(s){
+  for(let j=0;j<S[s].n;j++)act[s][j]=1;
+  const L=(from[s]||[]).flat();
+  for(let i=0;i<8&&L.length;i++)pulses.push({e:L[Math.random()*L.length|0],t:0,sp:2.2,chain:false});
+}
+async function anim(r,st,ctxw,P,nuevos){
+  const dt=+$('pV').value;
+  for(let s=0;s<S.length&&!abort;s++){
+    hover=-1;focus=s;mark(s);setInfo(S[s],dyn(s,r,st,ctxw,P,nuevos));burst(s);
+    await sleep(dt||12);
+  }
+  focus=-1;mark(-1);
+}
+async function ask(msg){
+  if(busy||!M.ready||!msg)return;
+  busy=true;abort=false;setMode(false);
+  $('send').disabled=true;$('stop').hidden=false;
+  addLog('u',msg);
+  const P=PAR(),B=M.c.block_size,MX=60;
+  $('live').hidden=false;$('out').textContent='';
+  const ctx=armarPrompt(msg,MX),nuevos=[];
+  $('live').scrollIntoView({block:'nearest',behavior:RM?'auto':'smooth'});
+  for(let i=0;i<MX&&!abort;i++){
+    const ctxw=ctx.slice(-B),r=forward(ctxw),st=muestrear(r.logits,ctx.slice(-64),P,Math.random);
+    lastRun={ctxw,att:r.att};renderToks();renderProbs(st);
+    await anim(r,st,ctxw,P,nuevos);
+    if(st.id===3||abort)break;
+    ctx.push(st.id);nuevos.push(st.id);
+    const t=dec(nuevos);$('out').textContent=t.split('\n')[0];
+    if(t.includes('\n'))break;
+  }
+  focus=-1;mark(-1);
+  const txt=dec(nuevos).split('\n')[0].trim()||'No sé qué responder a eso.';
+  addLog('c',txt);hist.push({r:'u',t:msg},{r:'c',t:txt});hist=hist.slice(-6);
+  busy=false;$('send').disabled=false;$('stop').hidden=true;$('q').focus({preventScroll:true});
+}
+$('f').addEventListener('submit',e=>{e.preventDefault();const v=$('q').value.trim();$('q').value='';ask(v)});
+$('stop').onclick=()=>{abort=true};
+$('sL').onchange=$('sH').onchange=renderToks;
+['¿Qué es la atención?','¿Cómo se entrena Cerebro?','¿Qué es el dropout?','Hola, ¿cómo estás?'].forEach(t=>{
+  const b=el('button',null,t);b.type='button';b.onclick=()=>ask(t);$('ex').append(b);
+});
+cargarModelo().then(()=>{
+  $('send').disabled=false;
+  $('st').textContent='Modelo real cargado: '+(M.meta.n_parametros||0).toLocaleString('es')+' parámetros, pérdida de validación '+(M.meta.val_loss||0).toFixed(2)+'. Se ejecuta en tu navegador. Es pequeño: responde bien lo que está en su corpus y se inventa lo demás.';
+}).catch(()=>{
+  $('st').textContent=location.protocol==='file:'?'El chat necesita abrirse desde GitHub Pages o desde un servidor local (por ejemplo: python3 -m http.server).':'No se pudo cargar la carpeta modelo/. Comprueba que subiste modelo/cerebro-web.json y modelo/cerebro-web.bin.';
+});
+
+addEventListener('resize',()=>{build();fbuild()});
+build();fbuild();requestAnimationFrame(frame);
+</script>
+</body>
+</html>
