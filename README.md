@@ -1,4 +1,4 @@
-# Educa IA
+# EDU-CRB
 
 Un modelo de lenguaje  **construido enteramente desde cero
 con NumPy**. Sin PyTorch, sin TensorFlow, sin autograd, sin APIs, sin modelos
